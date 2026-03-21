@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>CFI · DSS v15.15 · The Power of Decision</title>
+<title>CFI v15 · DSS · The Power of Decision</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -64,7 +64,7 @@ textarea.inp{min-height:72px;line-height:1.65;}
 const {useState,useEffect,useRef,useCallback,useMemo}=React;
 
 /* ══════════════════════════════════════════════════════════════════════
-   CFI v15.15 — DECISION SUPPORT SYSTEM · THE POWER OF DECISION
+   CFI v15 — DECISION SUPPORT SYSTEM · THE POWER OF DECISION
    ══════════════════════════════════════════════════════════════════════
    EXTENSÕES v8 (adicionadas sobre v7 sem modificar nada):
    + STANDBY: nova fase estratégica para vagas pausadas
@@ -86,108 +86,98 @@ const {useState,useEffect,useRef,useCallback,useMemo}=React;
 
    IA: 5 especialistas com visão trilateral + DISC hierárquico D-I-C-S
    ══════════════════════════════════════════════════════════════════════ */
+/* ── CONFIGURAÇÃO ── */
+const APPKEY = 'cfi_v101';
+const SUPA_URL = 'https://cyusudtperztqdlvtxza.supabase.co';
+const SUPA_KEY = 'sb_publishable_1mojcbvYkm0z17gCowfLYA_uTZZDu5h';
 
-const APPKEY='cfi_v101';
-const persist=d=>{try{localStorage.setItem(APPKEY,JSON.stringify(d));}catch{}};
-const hydrate=()=>{try{return JSON.parse(localStorage.getItem(APPKEY)||'null');}catch{return null;}};
+/* ── SUPABASE CLIENTS ── */
+const _sb = supabase.createClient(SUPA_URL, SUPA_KEY);
+const _supa = supabase.createClient(
+  SUPA_URL,
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplYmVkdGNwd3lpbHByYWJxa25rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NTUwODIsImV4cCI6MjA4OTUzMTA4Mn0.E5kA3bHMQI0QWerPoZoRacT9CmJ4k4W6NxKFrMzm4Kk'
+);
 
-/* ── SUPABASE AUTH + SYNC ──────────────────────────────────────────────────
-   Uses official Supabase SDK loaded via CDN.
-   SDK handles: JWT tokens, refresh, session persistence across devices.
-   Table: cfi_data (user_id uuid PK, data jsonb, updated_at timestamptz)
-──────────────────────────────────────────────────────────────────────────── */
-const _supa=supabase.createClient('https://jebedtcpwyilprabqknk.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplYmVkdGNwd3lpbHByYWJxa25rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NTUwODIsImV4cCI6MjA4OTUzMTA4Mn0.E5kA3bHMQI0QWerPoZoRacT9CmJ4k4W6NxKFrMzm4Kk');
+/* ── LOCAL STORAGE FALLBACK ── */
+const persist = d => { try { localStorage.setItem(APPKEY, JSON.stringify(d)); } catch {} };
+const hydrate = () => { try { return JSON.parse(localStorage.getItem(APPKEY) || 'null'); } catch { return null; } };
+const _getSess = () => { try { const s = localStorage.getItem('cfi_jbs'); return s ? JSON.parse(s) : null; } catch { return null; } };
+const _setSess = s => { try { localStorage.setItem('cfi_jbs', JSON.stringify(s)); } catch {} };
+const _clrSess = () => { try { localStorage.removeItem('cfi_jbs'); _supa.auth.signOut(); } catch {} };
 
-function _getSess(){
-  try{
-    const s=localStorage.getItem('cfi_jbs');
-    return s?JSON.parse(s):null;
-  }catch{return null;}
+/* ── SUPABASE AUTH - V1 (_sb) ── */
+async function supaGetUser() {
+  try { const { data: { user } } = await _sb.auth.getUser(); return user || null; } 
+  catch { return null; }
 }
-function _setSess(s){try{localStorage.setItem('cfi_jbs',JSON.stringify(s));}catch{}}
-function _clrSess(){
-  try{
-    localStorage.removeItem('cfi_jbs');
-    _supa.auth.signOut();
-  }catch{}
+async function supaSignIn(email, password) {
+  try { const { data, error } = await _sb.auth.signInWithPassword({ email, password }); return error ? { error } : data; } 
+  catch (e) { return { error: { message: e.message } }; }
 }
-
-async function _signup(em,pw){
-  try{
-    const{data,error}=await _supa.auth.signUp({email:em,password:pw});
-    if(error)return{ok:false,e:error.message};
-    if(!data.user)return{ok:false,e:'Erro ao criar conta. Tente novamente.'};
-    /* If session exists, email confirmation is disabled (correct setup) */
-    if(data.session&&data.user){
-      return{ok:true,uid:data.user.id,em,session:data.session};
-    }
-    /* If no session, email confirmation is enabled - user needs to confirm */
-    return{ok:false,e:'Confirme seu email antes de entrar. Verifique a caixa de entrada.'};
-  }catch(e){return{ok:false,e:e.message};}
+async function supaSignUp(email, password) {
+  try { const { data, error } = await _sb.auth.signUp({ email, password }); return error ? { error } : data; } 
+  catch (e) { return { error: { message: e.message } }; }
 }
-
-async function _login(em,pw){
-  try{
-    const{data,error}=await _supa.auth.signInWithPassword({email:em,password:pw});
-    if(error){
-      if(error.message.includes('Email not confirmed')||error.message.includes('email_not_confirmed')){
-        return{ok:false,e:'Email nao confirmado. Va em Supabase > Authentication > Providers > Email > desative "Confirm email".'};
-      }
-      return{ok:false,e:error.message};
-    }
-    if(!data.user||!data.session)return{ok:false,e:'Erro ao autenticar. Tente novamente.'};
-    return{ok:true,uid:data.user.id,em,session:data.session};
-  }catch(e){return{ok:false,e:e.message};}
-}
-
-async function _load(uid){
-  if(!uid)return null;
-  try{
-    const{data,error}=await _supa.from('cfi_data')
-      .select('data')
-      .eq('user_id',uid)
-      .maybeSingle();
-    if(error){console.error('CFI load error:',error.message,error.code);return null;}
-    if(!data)return null;
+async function supaSignOut() { try { await _sb.auth.signOut(); } catch {} }
+async function supaLoad(userId) {
+  try {
+    const { data, error } = await _sb.from('cfi_data').select('data').eq('user_id', userId).single();
+    if (error || !data) return null;
     return data.data;
-  }catch(e){console.error('CFI load exception:',e.message);return null;}
+  } catch { return null; }
+}
+async function supaSave(userId, data) {
+  const { error } = await _sb.from('cfi_data').upsert(
+    { user_id: userId, data: data, updated_at: new Date().toISOString() },
+    { onConflict: 'user_id' }
+  );
+  if (error) throw new Error(error.message);
 }
 
-async function _save(uid,appData){
-  if(!uid){console.warn('CFI save: uid ausente');return false;}
-  try{
-    const{error}=await _supa.from('cfi_data')
-      .upsert(
-        {user_id:uid,data:appData,updated_at:new Date().toISOString()},
-        {onConflict:'user_id',ignoreDuplicates:false}
-      );
-    if(error){
-      console.error('CFI save error:',error.message,'code:',error.code);
-      return false;
-    }
+/* ── SUPABASE AUTH + SYNC - V2 (_supa) ── */
+async function _signup(em, pw) {
+  try {
+    const { data, error } = await _supa.auth.signUp({ email: em, password: pw });
+    if (error) return { ok: false, e: error.message };
+    if (!data.user) return { ok: false, e: 'Verifique seu email para confirmar o cadastro.' };
+    return { ok: true, uid: data.user.id, em };
+  } catch (e) { return { ok: false, e: e.message }; }
+}
+
+async function _login(em, pw) {
+  try {
+    const { data, error } = await _supa.auth.signInWithPassword({ email: em, password: pw });
+    if (error) return { ok: false, e: error.message };
+    if (!data.user) return { ok: false, e: 'Erro ao autenticar.' };
+    return { ok: true, uid: data.user.id, em };
+  } catch (e) { return { ok: false, e: e.message }; }
+}
+
+async function _load(uid) {
+  if (!uid) return null;
+  try {
+    const { data, error } = await _supa.from('cfi_data').select('data').eq('user_id', uid).single();
+    if (error || !data) return null;
+    return data.data;
+  } catch { return null; }
+}
+
+async function _save(uid, appData) {
+  if (!uid) { console.warn('CFI save: no uid'); return false; }
+  try {
+    const payload = { user_id: uid, data: appData, updated_at: new Date().toISOString() };
+    const { error } = await _supa.from('cfi_data').upsert(payload, { onConflict: 'user_id' });
+    if (error) { console.error('CFI save error:', error.message, error.code); return false; }
     return true;
-  }catch(e){
-    console.error('CFI save exception:',e.message);
-    return false;
-  }
+  } catch (e) { console.error('CFI save exception:', e.message); return false; }
 }
 
-async function _checkSession(){
-  try{
-    const{data:{session}}=await _supa.auth.getSession();
-    if(session&&session.user)return{uid:session.user.id,em:session.user.email};
+async function _checkSession() {
+  try {
+    const { data: { session } } = await _supa.auth.getSession();
+    if (session && session.user) return { uid: session.user.id, em: session.user.email };
     return null;
-  }catch{return null;}
-}
-function _listenAuth(callback){
-  const{data:{subscription}}=_supa.auth.onAuthStateChange((event,session)=>{
-    if(event==='SIGNED_IN'&&session&&session.user){
-      callback({uid:session.user.id,em:session.user.email});
-    } else if(event==='SIGNED_OUT'){
-      callback(null);
-    }
-  });
-  return subscription;
+  } catch { return null; }
 }
 /* ── v10 DSS GUARDS ── */
 const sv=(v,d=0)=>{const n=parseFloat(v);return isNaN(n)?d:n;};
@@ -1148,7 +1138,7 @@ function RankTable({companies,profile,nav}){
   if(!rows.length)return null;
   return(<div style={{background:'var(--s2)',borderRadius:'var(--rl)',border:'1px solid var(--border)',overflow:'hidden',marginBottom:16}}>
     <div style={{padding:'12px 18px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
-      <Lbl mb={0}>🏆 Ranking DSS v15.15 · Score × EV × RPN × Estágio</Lbl>
+      <Lbl mb={0}>🏆 Ranking DSS v10 · Score × EV × RPN × Estágio</Lbl>
       <span style={{fontSize:9,color:'var(--t3)',fontFamily:'var(--mono)'}}>composite multicritério</span>
     </div>
     {rows.map(({co,fs,ev,rpn,decay,sustain,align,falsePos,composite},i)=>{
@@ -1202,7 +1192,7 @@ function IntelTab({company,profile,all=[]}){
   const displayFS=decay?decay.decayed:fs;
   return(<div className="fin">
     <Card sx={{padding:'18px 20px',marginBottom:14,background:'linear-gradient(135deg,rgba(255,184,0,.04),var(--s2))',border:'1px solid #FFB80033'}}>
-      <Lbl c="var(--gold)" mb={10}>⚡ DSS Intelligence v15.15 · Score × EV × RPN</Lbl>
+      <Lbl c="var(--gold)" mb={10}>⚡ DSS Intelligence v10 · Score × EV × RPN</Lbl>
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
         {[
           {l:'Score Final',v:displayFS+'%',c:decay?'#FF3B30':fl.c,sub:decay?`↓ de ${decay.original}%`:'Bayesian calibrado'},
@@ -2542,7 +2532,7 @@ function Dashboard({companies,profile,nav,onAdd}){
           ))}
         </Card>
         <Card sx={{padding:'18px 20px'}}>
-          <Lbl>⚡ Power Ranking DSS v15.15</Lbl>
+          <Lbl>⚡ Power Ranking DSS v10</Lbl>
           {ranked.length===0&&<div style={{color:'var(--t3)',fontSize:13,padding:'10px 0'}}>Avalie oportunidades para ver o ranking</div>}
           {ranked.slice(0,5).map((co,i)=>{
             const nowMs=Date.now();
@@ -2792,7 +2782,7 @@ Skills: ${profile.skills||'—'}
 Conquistas: ${profile.achievements||'—'}
 Aprendizados anteriores: ${profile.pastLearnings||'—'}
 
-FUNIL DSS v15.15: ${companies.length} vagas | ${scored.length} avaliadas | Ativas: ${companies.filter(x=>!['no','done','standby'].includes(x.stage)).length}
+FUNIL DSS v10: ${companies.length} vagas | ${scored.length} avaliadas | Ativas: ${companies.filter(x=>!['no','done','standby'].includes(x.stage)).length}
 Alertas: ${audit.alerts.slice(0,3).map(a=>`${a.company}: ${a.msg}`).join(' | ')||'nenhum'}
 
 TOP OPORTUNIDADE: ${top?`${top.company} | ${top.role} | ${PIPE.find(s=>s.id===top.stage)?.label||top.stage}
@@ -2960,7 +2950,7 @@ Formato obrigatório (máx 400 palavras):
   async function generateView(vid){
     setLoading(l=>({...l,[vid]:true}));setErr(e=>({...e,[vid]:''}));
     const ctx=buildCtx();
-    const prompt=`${PROMPTS[vid]}\n\n═══ DADOS DSS v15.15 ═══\n${ctx}`;
+    const prompt=`${PROMPTS[vid]}\n\n═══ DADOS DSS v10 ═══\n${ctx}`;
     try{
       const r=await ai([{role:'user',content:prompt}],1400);
       setResults(res=>({...res,[vid]:r}));
@@ -2986,7 +2976,7 @@ Formato obrigatório (máx 400 palavras):
 
   return(
     <div className="fup">
-      <div style={{fontSize:22,fontWeight:900,letterSpacing:'-0.5px',marginBottom:20}}>Strategic Report · DSS v15.15</div>
+      <div style={{fontSize:22,fontWeight:900,letterSpacing:'-0.5px',marginBottom:20}}>Strategic Report · DSS v10</div>
 
       {validationWarnings.length>0&&(
         <Card sx={{padding:'12px 16px',marginBottom:14,border:'1px solid #FF950044'}}>
@@ -3041,7 +3031,7 @@ Formato obrigatório (máx 400 palavras):
       {/* 7 VISÕES */}
       <Card sx={{padding:'18px 20px',border:'1px solid #FFB80033',background:'linear-gradient(135deg,rgba(255,184,0,.03),var(--s2))'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
-          <Lbl c="var(--gold)" mb={0}>✦ 9 Visões Estratégicas · DSS v15.15 · IA</Lbl>
+          <Lbl c="var(--gold)" mb={0}>✦ 9 Visões Estratégicas · DSS v15 · IA</Lbl>
           <button onClick={generateAll} disabled={genAll}
             style={{display:'inline-flex',alignItems:'center',gap:7,padding:'9px 16px',
               background:genAll?'var(--s4)':'var(--gold)',color:genAll?'var(--t2)':'#000',
@@ -3092,7 +3082,7 @@ Formato obrigatório (máx 400 palavras):
                 <div style={{display:'flex',gap:8}}>
                   <button onClick={()=>generateView(activeV)} style={{padding:'5px 11px',background:'var(--s3)',border:'1px solid var(--border)',borderRadius:'var(--r)',cursor:'pointer',color:'var(--t2)',fontSize:11,fontWeight:700}}>↻ Regerar</button>
                   <button onClick={()=>{
-                    const b=new Blob([`CFI DSS v15.15 — ${av?.label}\n${profile.name} · ${new Date().toLocaleDateString('pt-BR')}\n\n${results[activeV]}`],{type:'text/plain'});
+                    const b=new Blob([`CFI DSS v10 — ${av?.label}\n${profile.name} · ${new Date().toLocaleDateString('pt-BR')}\n\n${results[activeV]}`],{type:'text/plain'});
                     const u=URL.createObjectURL(b);const a=document.createElement('a');
                     a.href=u;a.download=`cfi-v10-${activeV}-${Date.now()}.txt`;a.click();
                   }} style={{padding:'5px 11px',background:'var(--s3)',border:'1px solid var(--border)',borderRadius:'var(--r)',cursor:'pointer',color:'var(--t2)',fontSize:11,fontWeight:700}}>⬇ TXT</button>
@@ -3279,7 +3269,7 @@ CV:\n${txt.slice(0,3000)}`}],600);
         </div>}
       </Card>
 
-      {/* v15.15: API Key Multi-Provider */}
+      {/* v15: API Key Multi-Provider */}
       {(()=>{
         const [ak,setAk]=React.useState(()=>getApiKey());
         const [sv,setSv]=React.useState(false);
@@ -3402,8 +3392,7 @@ function AuthScreen({onAuth}){
     const r=mode==='login'?await _login(em.trim().toLowerCase(),pw):await _signup(em.trim().toLowerCase(),pw);
     setBusy(false);
     if(!r.ok){setErr(r.e);return;}
-    /* Supabase SDK already persists session in localStorage */
-    /* onAuthStateChange will fire and update App state */
+    _setSess({uid:r.uid,em:r.em});
     onAuth({uid:r.uid,em:r.em});
   }
 
@@ -3417,7 +3406,7 @@ function AuthScreen({onAuth}){
           <div style={{fontSize:48,fontWeight:900,color:'var(--gold)',letterSpacing:'-3px',
             fontFamily:'var(--mono)',lineHeight:1}}>CFI</div>
           <div style={{fontSize:9,color:'var(--t4)',fontWeight:700,letterSpacing:'.18em',
-            textTransform:'uppercase',marginTop:6}}>The Power of Decision · DSS v15.15</div>
+            textTransform:'uppercase',marginTop:6}}>The Power of Decision · DSS v15</div>
         </div>
 
         <Card sx={{padding:24}}>
@@ -3484,36 +3473,27 @@ function App(){
   const [showAdd,setShowAdd]=useState(false);
 
   useEffect(()=>{
-    /* Listen to Supabase auth state changes - reactive, works on all devices */
-    const subscription=_listenAuth(sess=>{
-      if(sess){
-        setJbs({uid:sess.uid,em:sess.em});
-        _setSess({uid:sess.uid,em:sess.em});
-        _cloudLoading.current=true;
-        _load(sess.uid).then(d=>{
-          if(d&&(d.profile||d.companies?.length))
-            setData({profile:d.profile||null,companies:d.companies||[]});
-          setTimeout(()=>{_cloudLoading.current=false;},800);
-        });
-      } else {
-        /* SIGNED_OUT event */
-        setJbs(null);
-      }
-    });
-    /* Also check existing session on mount (for page refresh) */
+    /* Check if Supabase has an active session (works on any device) */
     _checkSession().then(sess=>{
       if(sess){
+        /* Supabase session found, restore/confirm it */
         setJbs({uid:sess.uid,em:sess.em});
         _setSess({uid:sess.uid,em:sess.em});
         _cloudLoading.current=true;
         _load(sess.uid).then(d=>{
           if(d&&(d.profile||d.companies?.length))
             setData({profile:d.profile||null,companies:d.companies||[]});
-          setTimeout(()=>{_cloudLoading.current=false;},800);
+          setTimeout(()=>{_cloudLoading.current=false;},500);
+        });
+      } else if(jbs&&!jbs.offline&&jbs.uid){
+        _cloudLoading.current=true;
+        _load(jbs.uid).then(d=>{
+          if(d&&(d.profile||d.companies?.length))
+            setData({profile:d.profile||null,companies:d.companies||[]});
+          setTimeout(()=>{_cloudLoading.current=false;},500);
         });
       }
     });
-    return()=>subscription?.unsubscribe?.();
   },[]);
 
   useEffect(()=>{
@@ -3593,7 +3573,7 @@ function App(){
           <div style={{fontSize:32,fontWeight:900,color:'var(--gold)',letterSpacing:'-2px',
             fontFamily:'var(--mono)',lineHeight:1}}>CFI</div>
           <div style={{fontSize:9,color:'var(--t4)',fontWeight:700,letterSpacing:'.18em',
-            textTransform:'uppercase',marginTop:3}}>The Power of Decision · DSS v15.15</div>
+            textTransform:'uppercase',marginTop:3}}>The Power of Decision · DSS v15</div>
         </div>
         <div style={{padding:'12px 18px',borderBottom:'1px solid var(--border)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
@@ -3693,7 +3673,7 @@ function App(){
             </button>
           )}
           <div style={{fontSize:11,color:'var(--t4)',textAlign:'center'}}>
-            {companies.length} vagas · v15.15
+            {companies.length} vagas · CFI-v15.15
           </div>
         </div>
       </aside>
