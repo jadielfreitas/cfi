@@ -91,7 +91,7 @@ const APPKEY = 'cfi_v15';
 const SUPA_URL = 'https://cyusudtperztqdlvtxza.supabase.co';
 const SUPA_KEY = 'sb_publishable_1mojcbvYkm0z17gCowfLYA_uTZZDu5h';
 
-// Remova completamente o _supa
+// Remova completamente o supabase
 // Use apenas:
 const supabase = supabase.createClient(SUPA_URL, SUPA_KEY);
 
@@ -100,7 +100,7 @@ const persist = d => { try { localStorage.setItem(APPKEY, JSON.stringify(d)); } 
 const hydrate = () => { try { return JSON.parse(localStorage.getItem(APPKEY) || 'null'); } catch { return null; } };
 const _getSess = () => { try { const s = localStorage.getItem('cfi_jbs'); return s ? JSON.parse(s) : null; } catch { return null; } };
 const _setSess = s => { try { localStorage.setItem('cfi_jbs', JSON.stringify(s)); } catch {} };
-const _clrSess = () => { try { localStorage.removeItem('cfi_jbs'); _supa.auth.signOut(); } catch {} };
+const _clrSess = () => { try { localStorage.removeItem('cfi_jbs'); supabase.auth.signOut(); } catch {} };
 
 /* ── SUPABASE AUTH - V1 (_sb) ── */
 async function supaGetUser() {
@@ -131,10 +131,10 @@ async function supaSave(userId, data) {
   if (error) throw new Error(error.message);
 }
 
-/* ── SUPABASE AUTH + SYNC - V2 (_supa) ── */
+/* ── SUPABASE AUTH + SYNC - V2 (supabase) ── */
 async function _signup(em, pw) {
   try {
-    const { data, error } = await _supa.auth.signUp({ email: em, password: pw });
+    const { data, error } = await supabase.auth.signUp({ email: em, password: pw });
     if (error) return { ok: false, e: error.message };
     if (!data.user) return { ok: false, e: 'Verifique seu email para confirmar o cadastro.' };
     return { ok: true, uid: data.user.id, em };
@@ -143,7 +143,7 @@ async function _signup(em, pw) {
 
 async function _login(em, pw) {
   try {
-    const { data, error } = await _supa.auth.signInWithPassword({ email: em, password: pw });
+    const { data, error } = await supabase.auth.signInWithPassword({ email: em, password: pw });
     if (error) return { ok: false, e: error.message };
     if (!data.user) return { ok: false, e: 'Erro ao autenticar.' };
     return { ok: true, uid: data.user.id, em };
@@ -153,7 +153,7 @@ async function _login(em, pw) {
 async function _load(uid) {
   if (!uid) return null;
   try {
-    const { data, error } = await _supa.from('cfi_data').select('data').eq('user_id', uid).single();
+    const { data, error } = await supabase.from('cfi_data').select('data').eq('user_id', uid).single();
     if (error || !data) return null;
     return data.data;
   } catch { return null; }
@@ -163,7 +163,7 @@ async function _save(uid, appData) {
   if (!uid) { console.warn('CFI save: no uid'); return false; }
   try {
     const payload = { user_id: uid, data: appData, updated_at: new Date().toISOString() };
-    const { error } = await _supa.from('cfi_data').upsert(payload, { onConflict: 'user_id' });
+    const { error } = await supabase.from('cfi_data').upsert(payload, { onConflict: 'user_id' });
     if (error) { console.error('CFI save error:', error.message, error.code); return false; }
     return true;
   } catch (e) { console.error('CFI save exception:', e.message); return false; }
@@ -171,7 +171,7 @@ async function _save(uid, appData) {
 
 async function _checkSession() {
   try {
-    const { data: { session } } = await _supa.auth.getSession();
+    const { data: { session } } = await supabase.auth.getSession();
     if (session && session.user) return { uid: session.user.id, em: session.user.email };
     return null;
   } catch { return null; }
