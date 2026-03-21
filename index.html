@@ -221,7 +221,9 @@ async function _save(uid, appData) {
     return false;
   }
 }
-  if (!uid) { console.warn('CFI save: no uid'); return false; }
+  setInterval(() => { 
+  if (uid) _save(uid, data);
+}, 3000)  // ← 3 segundos em vez de 30
   try {
     const payload = { user_id: uid, data: appData, updated_at: new Date().toISOString() };
     const { error } = await supabase.from('cfi_data').upsert(payload, { onConflict: 'user_id' });
