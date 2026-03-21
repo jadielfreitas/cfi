@@ -151,6 +151,37 @@ async function _login(em, pw) {
 }
 
 async function _load(uid) {
+  if (!uid) {
+    const backup = localStorage.getItem('cfi_backup');
+    return backup ? JSON.parse(backup) : null;
+  }
+  
+  try {
+    const { data, error } = await supabase
+      .from('cfi_data')
+      .select('data')
+      .eq('user_id', uid)
+      .single();
+    
+    if (error) {
+      console.log('⚠️ Supabase vazio, usando backup local');
+      const backup = localStorage.getItem('cfi_backup');
+      return backup ? JSON.parse(backup) : null;
+    }
+    
+    if (data) {
+      console.log('☁️ Carregado do Supabase');
+      localStorage.setItem('cfi_backup', JSON.stringify(data.data));
+      return data.data;
+    }
+    
+    return null;
+  } catch (e) { 
+    console.error('Erro ao carregar:', e.message);
+    const backup = localStorage.getItem('cfi_backup');
+    return backup ? JSON.parse(backup) : null;
+  }
+}
   if (!uid) return null;
   try {
     const { data, error } = await supabase.from('cfi_data').select('data').eq('user_id', uid).single();
@@ -160,7 +191,39 @@ async function _load(uid) {
 }
 
 async function _save(uid, appData) {
-  if (!uid) { console.warn('CFI save: no uid'); return false; }
+  if (!uid) { 
+    console.warn('CFI save: sem uid'); 
+    localStorage.setItem('cfi_backup', JSON.stringify(appData));
+    return true;
+  }
+  
+  try {
+    const payload = { 
+      user_id: uid, 
+      data: appData, 
+      updated_at: new Date().toISOString() 
+    };
+    
+    const { data, error } = await supabase.from('cfi_data').upsert(payload);
+    
+    if (error) {
+      console.error('❌ Supabase error:', error);
+      localStorage.setItem('cfi_backup', JSON.stringify(appData));
+      return false;
+    }
+    
+    console.log('☁️ Salvo no Supabase');
+    localStorage.setItem('cfi_backup', JSON.stringify(appData));
+    return true;
+  } catch (e) { 
+    console.error('Erro ao salvar:', e.message); 
+    localStorage.setItem('cfi_backup', JSON.stringify(appData));
+    return false;
+  }
+}
+  setInterval(() => { 
+  if (uid) _save(uid, data);
+}, 3000)  // ← 3 segundos em vez de 30
   try {
     const payload = { user_id: uid, data: appData, updated_at: new Date().toISOString() };
     const { error } = await supabase.from('cfi_data').upsert(payload, { onConflict: 'user_id' });
@@ -170,6 +233,18 @@ async function _save(uid, appData) {
 }
 
 async function _checkSession() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session && session.user) {
+      console.log('✅ Sessão ativa:', session.user.email);
+      return { uid: session.user.id, em: session.user.email };
+    }
+    return null;
+  } catch (e) {
+    console.error('Erro ao verificar sessão:', e);
+    return null;
+  }
+}
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (session && session.user) return { uid: session.user.id, em: session.user.email };
