@@ -57,11 +57,15 @@ textarea.inp{min-height:72px;line-height:1.65;}
 .spin{animation:spin .85s linear infinite;}
 @media print{.np{display:none!important;}body{background:#fff!important;color:#000!important;}}
 </style>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-</head>
-<body><div id="root"></div>
+
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback,useMemo}=React;
+
+// aqui seu código usando supabase.createClient(...)
+</script>
 
 /* ══════════════════════════════════════════════════════════════════════
    CFI v15 — DECISION SUPPORT SYSTEM · THE POWER OF DECISION
@@ -91,12 +95,9 @@ const APPKEY = 'cfi_v15';
 const SUPA_URL = 'https://cyusudtperztqdlvtxza.supabase.co';
 const SUPA_KEY = 'sb_publishable_1mojcbvYkm0z17gCowfLYA_uTZZDu5h';
 
-/* ── SUPABASE CLIENTS ── */
-const _sb = supabase.createClient(SUPA_URL, SUPA_KEY);
-const _supa = supabase.createClient(
-  SUPA_URL,
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplYmVkdGNwd3lpbHByYWJxa25rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NTUwODIsImV4cCI6MjA4OTUzMTA4Mn0.E5kA3bHMQI0QWerPoZoRacT9CmJ4k4W6NxKFrMzm4Kk'
-);
+// Remova completamente o _supa
+// Use apenas:
+const supabase = supabase.createClient(SUPA_URL, SUPA_KEY);
 
 /* ── LOCAL STORAGE FALLBACK ── */
 const persist = d => { try { localStorage.setItem(APPKEY, JSON.stringify(d)); } catch {} };
