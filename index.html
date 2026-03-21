@@ -62,22 +62,6 @@ textarea.inp{min-height:72px;line-height:1.65;}
 <body><div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback,useMemo}=React;
-/* ── CONFIGURAÇÃO SUPABASE CFI v15.15 ── */
-const SUPABASE_URL = 'https://cyusudtperztqdlvtxza.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5dXN1ZHRwZXJ6dHFkbHZ0eHphIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMDg4OTMsImV4cCI6MjA4OTY4NDg5M30.hnvjzqGmD_TRfJfg_-q1Y3qMUDWVtB9LMO3LjLsJBnY';
-
-// Inicializa o cliente que vai salvar e puxar seus dados
-const _supa = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-// Esta função garante que o dashboard salve tudo na nuvem automaticamente
-const saveToCloud = async (userId, dashboardData) => {
-    if (!userId) return;
-    await _supa.from('cfi_data').upsert({ 
-        user_id: userId, 
-        data: dashboardData, 
-        updated_at: new Date().toISOString() 
-    });
-};
 
 /* ══════════════════════════════════════════════════════════════════════
    CFI v15.15 — DECISION SUPPORT SYSTEM · THE POWER OF DECISION
