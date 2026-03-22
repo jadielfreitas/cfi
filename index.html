@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>CFI · DSS v15.15 · The Power of Decision</title>
+<title>CFI v10.1 · DSS · The Power of Decision</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
@@ -57,14 +57,13 @@ textarea.inp{min-height:72px;line-height:1.65;}
 .spin{animation:spin .85s linear infinite;}
 @media print{.np{display:none!important;}body{background:#fff!important;color:#000!important;}}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body><div id="root"></div>
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback,useMemo}=React;
 
 /* ══════════════════════════════════════════════════════════════════════
-   CFI v15.15 — DECISION SUPPORT SYSTEM · THE POWER OF DECISION
+   CFI v10.1 — DECISION SUPPORT SYSTEM · THE POWER OF DECISION
    ══════════════════════════════════════════════════════════════════════
    EXTENSÕES v8 (adicionadas sobre v7 sem modificar nada):
    + STANDBY: nova fase estratégica para vagas pausadas
@@ -90,104 +89,104 @@ const {useState,useEffect,useRef,useCallback,useMemo}=React;
 const APPKEY='cfi_v101';
 const persist=d=>{try{localStorage.setItem(APPKEY,JSON.stringify(d));}catch{}};
 const hydrate=()=>{try{return JSON.parse(localStorage.getItem(APPKEY)||'null');}catch{return null;}};
-
-/* ── SUPABASE AUTH + SYNC ──────────────────────────────────────────────────
-   Uses official Supabase SDK loaded via CDN.
-   SDK handles: JWT tokens, refresh, session persistence across devices.
-   Table: cfi_data (user_id uuid PK, data jsonb, updated_at timestamptz)
-──────────────────────────────────────────────────────────────────────────── */
-const _supa=supabase.createClient('https://jebedtcpwyilprabqknk.supabase.co','eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImplYmVkdGNwd3lpbHByYWJxa25rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NTUwODIsImV4cCI6MjA4OTUzMTA4Mn0.E5kA3bHMQI0QWerPoZoRacT9CmJ4k4W6NxKFrMzm4Kk');
-
-function _getSess(){
-  try{
-    const s=localStorage.getItem('cfi_jbs');
-    return s?JSON.parse(s):null;
-  }catch{return null;}
-}
+/* CLOUD SYNC — correto: bid buscado do JSONBin, nao do localStorage */
+const _JK='$2a$10$AcXjq9gjQxvZKAUq.gCrA.e368seIpCXns0Z005EOoB2lK9DhO/hW';
+const _JU='https://api.jsonbin.io/v3/b';
+function _hsh(s){let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h)+s.charCodeAt(i);return(h>>>0).toString(36);}
+function _getSess(){try{const s=localStorage.getItem('cfi_jbs');return s?JSON.parse(s):null;}catch{return null;}}
 function _setSess(s){try{localStorage.setItem('cfi_jbs',JSON.stringify(s));}catch{}}
-function _clrSess(){
-  try{
-    localStorage.removeItem('cfi_jbs');
-    _supa.auth.signOut();
-  }catch{}
-}
+function _clrSess(){try{localStorage.removeItem('cfi_jbs');}catch{}}
 
 async function _signup(em,pw){
+  const ek=_hsh(em);
+  const pwHash=_hsh(em+':'+pw);
+  const binName='cfi-'+ek;
   try{
-    const{data,error}=await _supa.auth.signUp({email:em,password:pw});
-    if(error)return{ok:false,e:error.message};
-    if(!data.user)return{ok:false,e:'Erro ao criar conta. Tente novamente.'};
-    /* If session exists, email confirmation is disabled (correct setup) */
-    if(data.session&&data.user){
-      return{ok:true,uid:data.user.id,em,session:data.session};
+    /* Check if bin already exists by searching */
+    const searchR=await fetch('https://api.jsonbin.io/v3/b?binName='+binName,{
+      headers:{'X-Master-Key':_JK}});
+    if(searchR.ok){
+      const searchD=await searchR.json();
+      if(searchD&&searchD.length>0){
+        return{ok:false,e:'Email ja cadastrado. Faca login.'};
+      }
     }
-    /* If no session, email confirmation is enabled - user needs to confirm */
-    return{ok:false,e:'Confirme seu email antes de entrar. Verifique a caixa de entrada.'};
-  }catch(e){return{ok:false,e:e.message};}
+    /* Create new bin with email hash as name */
+    const r=await fetch(_JU,{method:'POST',
+      headers:{'Content-Type':'application/json','X-Master-Key':_JK,
+        'X-Bin-Name':binName,'X-Bin-Private':'true'},
+      body:JSON.stringify({_pwh:pwHash,_em:em,profile:null,companies:[],_ts:Date.now()})});
+    if(!r.ok){const e=await r.text();return{ok:false,e:'Erro ao criar conta: '+r.status};}
+    const d=await r.json();
+    const bid=d.metadata.id;
+    /* Cache locally */
+    localStorage.setItem('cfi_bid_'+ek,bid);
+    localStorage.setItem('cfi_pwh_'+ek,pwHash);
+    return{ok:true,bid,em};
+  }catch(e){return{ok:false,e:'Erro de rede: '+e.message};}
 }
 
 async function _login(em,pw){
-  try{
-    const{data,error}=await _supa.auth.signInWithPassword({email:em,password:pw});
-    if(error){
-      if(error.message.includes('Email not confirmed')||error.message.includes('email_not_confirmed')){
-        return{ok:false,e:'Email nao confirmado. Va em Supabase > Authentication > Providers > Email > desative "Confirm email".'};
-      }
-      return{ok:false,e:error.message};
-    }
-    if(!data.user||!data.session)return{ok:false,e:'Erro ao autenticar. Tente novamente.'};
-    return{ok:true,uid:data.user.id,em,session:data.session};
-  }catch(e){return{ok:false,e:e.message};}
-}
-
-async function _load(uid){
-  if(!uid)return null;
-  try{
-    const{data,error}=await _supa.from('cfi_data')
-      .select('data')
-      .eq('user_id',uid)
-      .maybeSingle();
-    if(error){console.error('CFI load error:',error.message,error.code);return null;}
-    if(!data)return null;
-    return data.data;
-  }catch(e){console.error('CFI load exception:',e.message);return null;}
-}
-
-async function _save(uid,appData){
-  if(!uid){console.warn('CFI save: uid ausente');return false;}
-  try{
-    const{error}=await _supa.from('cfi_data')
-      .upsert(
-        {user_id:uid,data:appData,updated_at:new Date().toISOString()},
-        {onConflict:'user_id',ignoreDuplicates:false}
-      );
-    if(error){
-      console.error('CFI save error:',error.message,'code:',error.code);
-      return false;
-    }
-    return true;
-  }catch(e){
-    console.error('CFI save exception:',e.message);
-    return false;
+  const ek=_hsh(em);
+  const pwHash=_hsh(em+':'+pw);
+  /* Try cache first (same device) */
+  const cachedBid=localStorage.getItem('cfi_bid_'+ek);
+  const cachedPwh=localStorage.getItem('cfi_pwh_'+ek);
+  if(cachedBid&&cachedPwh===pwHash){
+    return{ok:true,bid:cachedBid,em};
   }
+  /* Search JSONBin by name (works on any device) */
+  try{
+    const binName='cfi-'+ek;
+    const searchR=await fetch('https://api.jsonbin.io/v3/b?binName='+binName,{
+      headers:{'X-Master-Key':_JK}});
+    if(!searchR.ok)return{ok:false,e:'Erro ao conectar. Tente novamente.'};
+    const bins=await searchR.json();
+    if(!bins||bins.length===0)return{ok:false,e:'Conta nao encontrada. Cadastre-se.'};
+    const bid=bins[0].id||bins[0]._id;
+    /* Verify password by loading the bin */
+    const dataR=await fetch(_JU+'/'+bid+'/latest',{
+      headers:{'X-Master-Key':_JK,'X-Bin-Meta':'false'}});
+    if(!dataR.ok)return{ok:false,e:'Erro ao verificar conta.'};
+    const data=await dataR.json();
+    if(data._pwh&&data._pwh!==pwHash)return{ok:false,e:'Senha incorreta.'};
+    /* Cache for next time */
+    localStorage.setItem('cfi_bid_'+ek,bid);
+    localStorage.setItem('cfi_pwh_'+ek,pwHash);
+    return{ok:true,bid,em};
+  }catch(e){return{ok:false,e:'Erro de rede: '+e.message};}
 }
 
-async function _checkSession(){
+async function _load(bid){
   try{
-    const{data:{session}}=await _supa.auth.getSession();
-    if(session&&session.user)return{uid:session.user.id,em:session.user.email};
-    return null;
+    const r=await fetch(_JU+'/'+bid+'/latest',{headers:{'X-Master-Key':_JK,'X-Bin-Meta':'false'}});
+    if(!r.ok)return null;
+    const d=await r.json();
+    /* Strip internal fields */
+    const {_pwh,_em,_ts,...clean}=d||{};
+    return(clean&&(clean.profile||clean.companies))?clean:null;
   }catch{return null;}
 }
-function _listenAuth(callback){
-  const{data:{subscription}}=_supa.auth.onAuthStateChange((event,session)=>{
-    if(event==='SIGNED_IN'&&session&&session.user){
-      callback({uid:session.user.id,em:session.user.email});
-    } else if(event==='SIGNED_OUT'){
-      callback(null);
-    }
-  });
-  return subscription;
+
+async function _save(bid,data,sess){
+  if(!bid)return false;
+  try{
+    const ek=sess?_hsh(sess.em):null;
+    const pwh=ek?localStorage.getItem('cfi_pwh_'+ek):null;
+    const payload={
+      ...data,
+      _pwh:pwh||undefined,
+      _em:sess?sess.em:undefined,
+      _ts:Date.now()
+    };
+    const r=await fetch(_JU+'/'+bid,{method:'PUT',
+      headers:{'Content-Type':'application/json','X-Master-Key':_JK},
+      body:JSON.stringify(payload)});
+    return r.ok;
+  }catch(e){
+    console.warn('CFI save failed:',e.message);
+    return false;
+  }
 }
 /* ── v10 DSS GUARDS ── */
 const sv=(v,d=0)=>{const n=parseFloat(v);return isNaN(n)?d:n;};
@@ -814,151 +813,6 @@ Máximo 300 palavras. Formato simples: diagnóstico, top oportunidade, próxima 
   }
 }
 
-/* ─── QUALIFICAÇÃO DE VAGA/EMPRESA (CFI-v15.15) ─── */
-function calcProfileMatch(co, profile){
-  // Calcula match entre perfil do candidato e vaga
-  // Retorna 0-100
-  if(!profile)return 50;
-  let score=50, factors=0;
-
-  // Tipo de venda match (peso alto)
-  if(co.tipoVenda&&profile.tipoVendaPerfil){
-    const exact=co.tipoVenda===profile.tipoVendaPerfil;
-    const compatible={
-      'SaaS/Recorrente':['Híbrido'],
-      'CAPEX':['Híbrido','Serviços'],
-      'Serviços':['CAPEX','Híbrido'],
-      'Híbrido':['SaaS/Recorrente','CAPEX','Serviços'],
-    };
-    if(exact){score+=20;}
-    else if(compatible[profile.tipoVendaPerfil]?.includes(co.tipoVenda)){score+=12;}
-    else{score-=10;}
-    factors++;
-  }
-
-  // Ticket match (peso alto)
-  if(co.ticket&&profile.ticketPerfil){
-    if(co.ticket===profile.ticketPerfil){score+=15;}
-    else{
-      const tiers={'< 50k':1,'50k – 500k':2,'> 500k':3};
-      const diff=Math.abs((tiers[co.ticket]||2)-(tiers[profile.ticketPerfil]||2));
-      score+=diff===1?8:-5;
-    }
-    factors++;
-  }
-
-  // Setor match — alta transferibilidade entre setores complexos
-  if(co.setor&&profile.setoresTransfer?.length>0){
-    if(profile.setoresTransfer.includes(co.setor)){
-      score+=18; // setores onde ja atuou
-    } else {
-      // Grupos de alta transferibilidade
-      const groups=[
-        ['MedTech','HealthTech','CAPEX Industrial'],
-        ['SaaS Enterprise','LogTech','FinTech','HealthTech'],
-        ['AgTech','LogTech','CAPEX Industrial'],
-        ['FinTech','SaaS Enterprise','EdTech'],
-      ];
-      const hasTransfer=groups.some(g=>
-        g.includes(co.setor)&&g.some(x=>profile.setoresTransfer?.includes(x))
-      );
-      score+=hasTransfer?10:0;
-    }
-    factors++;
-  }
-
-  // Mix hunter/farmer match
-  if(co.mixHF&&profile.mixHFPerfil){
-    if(co.mixHF===profile.mixHFPerfil){score+=10;}
-    else{
-      const hunterScore={'100% Hunter':5,'70/30':4,'50/50':3,'30/70':2,'100% Farmer':1};
-      const diff=Math.abs((hunterScore[co.mixHF]||3)-(hunterScore[profile.mixHFPerfil]||3));
-      score+=diff<=1?6:diff===2?2:-4;
-    }
-    factors++;
-  }
-
-  // Objetivo match
-  if(co.objetivo&&profile.objetivoPerfil){
-    score+=co.objetivo===profile.objetivoPerfil?8:2;
-    factors++;
-  }
-
-  // Contrato match
-  if(co.contrato&&profile.contratoPerfil){
-    score+=co.contrato===profile.contratoPerfil?7:
-      (profile.contratoPerfil==='Híbrido'||co.contrato==='Híbrido')?4:0;
-    factors++;
-  }
-
-  return Math.max(0,Math.min(100,Math.round(score)));
-}
-
-function calcQualScore(co){
-  // Scoring baseado nos novos campos de qualificação
-  // Retorna 0-100, funciona como ajuste fino ao score principal
-  let pts=0, max=0;
-
-  // Tipo de contrato (peso 8)
-  const ct={CLT:100,PJ:85,'Híbrido':80,Projeto:60,Equity:70}[co.contrato||'']||50;
-  pts+=ct*0.08; max+=8;
-
-  // Tipo de venda vs perfil executivo (peso 12)
-  const tv={'SaaS/Recorrente':100,'CAPEX':90,'Híbrido':85,Serviços:70}[co.tipoVenda||'']||50;
-  pts+=tv*0.12; max+=12;
-
-  // Ticket médio (peso 10)
-  const tk={'> 500k':100,'50k – 500k':85,'< 50k':55}[co.ticket||'']||50;
-  pts+=tk*0.10; max+=10;
-
-  // Objetivo da vaga (peso 10)
-  const obj={'BDM – Abrir mercado':100,'GTM – Lançamento':95,'Hunter – Nova receita':90,'Farmer – Expansão':75,Gestão:70,Projetos:65}[co.objetivo||'']||50;
-  pts+=obj*0.10; max+=10;
-
-  // OTE vs mercado (peso 10)
-  const ote={'> mercado':100,'= mercado':85,'50–100% mercado':65,'< 50% mercado':30}[co.ote||'']||50;
-  pts+=ote*0.10; max+=10;
-
-  // Pressão por meta (peso 6)
-  const pm={Baixa:90,Média:75,Alta:55}[co.pressaoMeta||'']||70;
-  pts+=pm*0.06; max+=6;
-
-  // Estágio empresa (peso 8)
-  const ee={'Estável/Madura':90,'Scale-up':85,Startup:75,Reestruturação:55,Recuperação:40}[co.estagioEmp||'']||65;
-  pts+=ee*0.08; max+=8;
-
-  // Maturidade comercial (peso 8)
-  const mc={Madura:100,Estruturada:85,Inicial:60,Inexistente:35}[co.matComercial||'']||60;
-  pts+=mc*0.08; max+=8;
-
-  // Setor (peso 8) - setores de maior fit com perfil
-  const st={MedTech:100,HealthTech:100,'SaaS Enterprise':95,'CAPEX Industrial':90,LogTech:85,AgTech:80,FinTech:80,EdTech:70,Outro:60}[co.setor||'']||65;
-  pts+=st*0.08; max+=8;
-
-  // Crescimento empresa (peso 7)
-  const cr={'> 30% aa':100,'10–30% aa':85,'< 10% aa':60,Declinando:30}[co.crescimento||'']||60;
-  pts+=cr*0.07; max+=7;
-
-  // Estrutura pré-vendas (peso 7)
-  const pv={'Inside Sales estruturado':100,'SDR interno':85,'SDR externo':75,'Sem SDR':50}[co.preVendas||'']||60;
-  pts+=pv*0.07; max+=7;
-
-  // Força marketing (peso 6)
-  const mk={Alta:100,Média:75,Baixa:50}[co.marketing||'']||65;
-  pts+=mk*0.06; max+=6;
-
-  // Normalize: if no fields filled, return neutral 65
-  if(max===0)return 65;
-  return Math.round(pts);
-}
-
-function calcFitLabel(combined, qualScore){
-  if(combined>=82)return{label:'Fit Ideal',c:'#00D47E',icon:'⚡'};
-  if(combined>=70)return{label:'Fit com Risco',c:'#FFB800',icon:'⚠'};
-  if(combined>=60)return{label:'Fit Parcial',c:'#FF9500',icon:'~'};
-  return{label:'Desalinhado',c:'#FF3B30',icon:'✗'};
-}
-
 /* ─── AI ─── */
 function getApiKey(){
   try{return localStorage.getItem('cfi_apikey')||'';}catch{return '';}
@@ -1148,7 +1002,7 @@ function RankTable({companies,profile,nav}){
   if(!rows.length)return null;
   return(<div style={{background:'var(--s2)',borderRadius:'var(--rl)',border:'1px solid var(--border)',overflow:'hidden',marginBottom:16}}>
     <div style={{padding:'12px 18px',borderBottom:'1px solid var(--border)',display:'flex',justifyContent:'space-between'}}>
-      <Lbl mb={0}>🏆 Ranking DSS v15.15 · Score × EV × RPN × Estágio</Lbl>
+      <Lbl mb={0}>🏆 Ranking DSS v10 · Score × EV × RPN × Estágio</Lbl>
       <span style={{fontSize:9,color:'var(--t3)',fontFamily:'var(--mono)'}}>composite multicritério</span>
     </div>
     {rows.map(({co,fs,ev,rpn,decay,sustain,align,falsePos,composite},i)=>{
@@ -1202,7 +1056,7 @@ function IntelTab({company,profile,all=[]}){
   const displayFS=decay?decay.decayed:fs;
   return(<div className="fin">
     <Card sx={{padding:'18px 20px',marginBottom:14,background:'linear-gradient(135deg,rgba(255,184,0,.04),var(--s2))',border:'1px solid #FFB80033'}}>
-      <Lbl c="var(--gold)" mb={10}>⚡ DSS Intelligence v15.15 · Score × EV × RPN</Lbl>
+      <Lbl c="var(--gold)" mb={10}>⚡ DSS Intelligence v10 · Score × EV × RPN</Lbl>
       <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:14}}>
         {[
           {l:'Score Final',v:displayFS+'%',c:decay?'#FF3B30':fl.c,sub:decay?`↓ de ${decay.original}%`:'Bayesian calibrado'},
@@ -1723,112 +1577,6 @@ Texto:\n${f.jobDesc.slice(0,2000)}`}],400);
         <textarea className="inp" value={f.notes} onChange={e=>set('notes',e.target.value)}
           placeholder="Contatos, observações, próximos passos..." style={{minHeight:56}}/>
       </Fld>
-      {/* ── Qualificação da Vaga ── */}
-      <div style={{marginTop:16,marginBottom:6,fontSize:12,fontWeight:700,color:'var(--gold)',letterSpacing:'.1em',textTransform:'uppercase',fontFamily:'var(--mono)'}}>Qualificação da Vaga</div>
-
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
-        <Fld label="Tipo de Contrato">
-          <select className="inp" value={f.contrato||''} onChange={e=>set('contrato',e.target.value)}>
-            <option value="">Selecione</option>
-            {['CLT','PJ','Projeto','Equity','Híbrido'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Tipo de Venda">
-          <select className="inp" value={f.tipoVenda||''} onChange={e=>set('tipoVenda',e.target.value)}>
-            <option value="">Selecione</option>
-            {['SaaS/Recorrente','CAPEX','Serviços','Híbrido'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Ticket Médio">
-          <select className="inp" value={f.ticket||''} onChange={e=>set('ticket',e.target.value)}>
-            <option value="">Selecione</option>
-            {['< 50k','50k – 500k','> 500k'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Ciclo de Vendas">
-          <select className="inp" value={f.ciclo||''} onChange={e=>set('ciclo',e.target.value)}>
-            <option value="">Selecione</option>
-            {['0–90 dias','90–180 dias','6–18 meses','18+ meses'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Objetivo da Vaga">
-          <select className="inp" value={f.objetivo||''} onChange={e=>set('objetivo',e.target.value)}>
-            <option value="">Selecione</option>
-            {['BDM – Abrir mercado','GTM – Lançamento','Hunter – Nova receita','Farmer – Expansão','Gestão','Projetos'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Mix Hunter/Farmer">
-          <select className="inp" value={f.mixHF||''} onChange={e=>set('mixHF',e.target.value)}>
-            <option value="">Selecione</option>
-            {['100% Hunter','70/30','50/50','30/70','100% Farmer'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="OTE vs Mercado">
-          <select className="inp" value={f.ote||''} onChange={e=>set('ote',e.target.value)}>
-            <option value="">Selecione</option>
-            {['< 50% mercado','50–100% mercado','= mercado','> mercado'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Pressão por Meta">
-          <select className="inp" value={f.pressaoMeta||''} onChange={e=>set('pressaoMeta',e.target.value)}>
-            <option value="">Selecione</option>
-            {['Baixa','Média','Alta'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-      </div>
-
-      <div style={{marginTop:14,marginBottom:6,fontSize:12,fontWeight:700,color:'#0A84FF',letterSpacing:'.1em',textTransform:'uppercase',fontFamily:'var(--mono)'}}>Qualificação da Empresa</div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
-        <Fld label="Nº Funcionários">
-          <select className="inp" value={f.numFunc||''} onChange={e=>set('numFunc',e.target.value)}>
-            <option value="">Selecione</option>
-            {['1–50','50–200','200–1000','1000+'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Tipo">
-          <select className="inp" value={f.tipoEmp||''} onChange={e=>set('tipoEmp',e.target.value)}>
-            <option value="">Selecione</option>
-            {['Nacional','Multinacional','Startup','Scale-up'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Estágio">
-          <select className="inp" value={f.estagioEmp||''} onChange={e=>set('estagioEmp',e.target.value)}>
-            <option value="">Selecione</option>
-            {['Startup','Scale-up','Reestruturação','Recuperação','Estável/Madura'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Maturidade Comercial">
-          <select className="inp" value={f.matComercial||''} onChange={e=>set('matComercial',e.target.value)}>
-            <option value="">Selecione</option>
-            {['Inexistente','Inicial','Estruturada','Madura'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Setor">
-          <select className="inp" value={f.setor||''} onChange={e=>set('setor',e.target.value)}>
-            <option value="">Selecione</option>
-            {['MedTech','HealthTech','SaaS Enterprise','CAPEX Industrial','LogTech','AgTech','FinTech','EdTech','Outro'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Crescimento da Empresa">
-          <select className="inp" value={f.crescimento||''} onChange={e=>set('crescimento',e.target.value)}>
-            <option value="">Selecione</option>
-            {['< 10% aa','10–30% aa','> 30% aa','Declinando'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Estrutura Pré-vendas">
-          <select className="inp" value={f.preVendas||''} onChange={e=>set('preVendas',e.target.value)}>
-            <option value="">Selecione</option>
-            {['Sem SDR','SDR interno','SDR externo','Inside Sales estruturado'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Força de Marketing">
-          <select className="inp" value={f.marketing||''} onChange={e=>set('marketing',e.target.value)}>
-            <option value="">Selecione</option>
-            {['Baixa','Média','Alta'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-      </div>
-
       <div style={{display:'flex',gap:10,marginTop:8}}>
         <button onClick={onClose} style={{padding:'11px 18px',background:'var(--s3)',
           border:'1px solid var(--border)',borderRadius:'var(--r)',color:'var(--t2)',cursor:'pointer',fontWeight:600}}>Cancel</button>
@@ -2339,10 +2087,6 @@ function DetailView({company,onUpdate,onBack,profile}){
   const fp=filled(company.ans||{});
   const stage=PIPE.find(s=>s.id===company.stage);
   const fl=finalLabel(fs);
-  const qs=calcQualScore(company);
-  const pm=calcProfileMatch(company,profile);
-  const combined=Math.round(fs*0.65+qs*0.20+pm*0.15);
-  const fitLbl=calcFitLabel(combined,qs);
 
   return(
     <div className="fup">
@@ -2542,7 +2286,7 @@ function Dashboard({companies,profile,nav,onAdd}){
           ))}
         </Card>
         <Card sx={{padding:'18px 20px'}}>
-          <Lbl>⚡ Power Ranking DSS v15.15</Lbl>
+          <Lbl>⚡ Power Ranking DSS v10</Lbl>
           {ranked.length===0&&<div style={{color:'var(--t3)',fontSize:13,padding:'10px 0'}}>Avalie oportunidades para ver o ranking</div>}
           {ranked.slice(0,5).map((co,i)=>{
             const nowMs=Date.now();
@@ -2792,7 +2536,7 @@ Skills: ${profile.skills||'—'}
 Conquistas: ${profile.achievements||'—'}
 Aprendizados anteriores: ${profile.pastLearnings||'—'}
 
-FUNIL DSS v15.15: ${companies.length} vagas | ${scored.length} avaliadas | Ativas: ${companies.filter(x=>!['no','done','standby'].includes(x.stage)).length}
+FUNIL DSS v10: ${companies.length} vagas | ${scored.length} avaliadas | Ativas: ${companies.filter(x=>!['no','done','standby'].includes(x.stage)).length}
 Alertas: ${audit.alerts.slice(0,3).map(a=>`${a.company}: ${a.msg}`).join(' | ')||'nenhum'}
 
 TOP OPORTUNIDADE: ${top?`${top.company} | ${top.role} | ${PIPE.find(s=>s.id===top.stage)?.label||top.stage}
@@ -2960,7 +2704,7 @@ Formato obrigatório (máx 400 palavras):
   async function generateView(vid){
     setLoading(l=>({...l,[vid]:true}));setErr(e=>({...e,[vid]:''}));
     const ctx=buildCtx();
-    const prompt=`${PROMPTS[vid]}\n\n═══ DADOS DSS v15.15 ═══\n${ctx}`;
+    const prompt=`${PROMPTS[vid]}\n\n═══ DADOS DSS v10 ═══\n${ctx}`;
     try{
       const r=await ai([{role:'user',content:prompt}],1400);
       setResults(res=>({...res,[vid]:r}));
@@ -2986,7 +2730,7 @@ Formato obrigatório (máx 400 palavras):
 
   return(
     <div className="fup">
-      <div style={{fontSize:22,fontWeight:900,letterSpacing:'-0.5px',marginBottom:20}}>Strategic Report · DSS v15.15</div>
+      <div style={{fontSize:22,fontWeight:900,letterSpacing:'-0.5px',marginBottom:20}}>Strategic Report · DSS v10</div>
 
       {validationWarnings.length>0&&(
         <Card sx={{padding:'12px 16px',marginBottom:14,border:'1px solid #FF950044'}}>
@@ -3041,7 +2785,7 @@ Formato obrigatório (máx 400 palavras):
       {/* 7 VISÕES */}
       <Card sx={{padding:'18px 20px',border:'1px solid #FFB80033',background:'linear-gradient(135deg,rgba(255,184,0,.03),var(--s2))'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:10}}>
-          <Lbl c="var(--gold)" mb={0}>✦ 9 Visões Estratégicas · DSS v15.15 · IA</Lbl>
+          <Lbl c="var(--gold)" mb={0}>✦ 9 Visões Estratégicas · DSS v10.1 · IA</Lbl>
           <button onClick={generateAll} disabled={genAll}
             style={{display:'inline-flex',alignItems:'center',gap:7,padding:'9px 16px',
               background:genAll?'var(--s4)':'var(--gold)',color:genAll?'var(--t2)':'#000',
@@ -3092,7 +2836,7 @@ Formato obrigatório (máx 400 palavras):
                 <div style={{display:'flex',gap:8}}>
                   <button onClick={()=>generateView(activeV)} style={{padding:'5px 11px',background:'var(--s3)',border:'1px solid var(--border)',borderRadius:'var(--r)',cursor:'pointer',color:'var(--t2)',fontSize:11,fontWeight:700}}>↻ Regerar</button>
                   <button onClick={()=>{
-                    const b=new Blob([`CFI DSS v15.15 — ${av?.label}\n${profile.name} · ${new Date().toLocaleDateString('pt-BR')}\n\n${results[activeV]}`],{type:'text/plain'});
+                    const b=new Blob([`CFI DSS v10 — ${av?.label}\n${profile.name} · ${new Date().toLocaleDateString('pt-BR')}\n\n${results[activeV]}`],{type:'text/plain'});
                     const u=URL.createObjectURL(b);const a=document.createElement('a');
                     a.href=u;a.download=`cfi-v10-${activeV}-${Date.now()}.txt`;a.click();
                   }} style={{padding:'5px 11px',background:'var(--s3)',border:'1px solid var(--border)',borderRadius:'var(--r)',cursor:'pointer',color:'var(--t2)',fontSize:11,fontWeight:700}}>⬇ TXT</button>
@@ -3186,83 +2930,6 @@ CV:\n${txt.slice(0,3000)}`}],600);
         </Fld>
       </Card>
 
-      <Card sx={{padding:22,marginBottom:14}}>
-        <div style={{fontSize:15,fontWeight:700,marginBottom:4,color:'var(--gold)'}}>🎯 Perfil Comercial & Match</div>
-        <div style={{fontSize:12,color:'var(--t2)',marginBottom:14,lineHeight:1.6}}>
-          Estes dados calibram o match com vagas. Quem vende enterprise médico também performa em industrial, logística e outros setores complexos — o sistema pondera isso automaticamente.
-        </div>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 12px'}}>
-          <Fld label="Tipo de Venda Principal">
-            <select className="inp" value={f.tipoVendaPerfil||''} onChange={e=>s('tipoVendaPerfil',e.target.value)}>
-              <option value="">Selecione</option>
-              {['SaaS/Recorrente','CAPEX','Serviços','Híbrido'].map(x=><option key={x}>{x}</option>)}
-            </select>
-          </Fld>
-          <Fld label="Ticket Médio Histórico">
-            <select className="inp" value={f.ticketPerfil||''} onChange={e=>s('ticketPerfil',e.target.value)}>
-              <option value="">Selecione</option>
-              {['< 50k','50k – 500k','> 500k'].map(x=><option key={x}>{x}</option>)}
-            </select>
-          </Fld>
-          <Fld label="Ciclo de Vendas Habitual">
-            <select className="inp" value={f.cicloPerfil||''} onChange={e=>s('cicloPerfil',e.target.value)}>
-              <option value="">Selecione</option>
-              {['0–90 dias','90–180 dias','6–18 meses','18+ meses'].map(x=><option key={x}>{x}</option>)}
-            </select>
-          </Fld>
-          <Fld label="Mix Hunter/Farmer Ideal">
-            <select className="inp" value={f.mixHFPerfil||''} onChange={e=>s('mixHFPerfil',e.target.value)}>
-              <option value="">Selecione</option>
-              {['100% Hunter','70/30','50/50','30/70','100% Farmer'].map(x=><option key={x}>{x}</option>)}
-            </select>
-          </Fld>
-          <Fld label="Objetivo Preferido">
-            <select className="inp" value={f.objetivoPerfil||''} onChange={e=>s('objetivoPerfil',e.target.value)}>
-              <option value="">Selecione</option>
-              {['BDM – Abrir mercado','GTM – Lançamento','Hunter – Nova receita','Farmer – Expansão','Gestão'].map(x=><option key={x}>{x}</option>)}
-            </select>
-          </Fld>
-          <Fld label="Contrato Preferido">
-            <select className="inp" value={f.contratoPerfil||''} onChange={e=>s('contratoPerfil',e.target.value)}>
-              <option value="">Selecione</option>
-              {['CLT','PJ','Híbrido','Equity'].map(x=><option key={x}>{x}</option>)}
-            </select>
-          </Fld>
-        </div>
-        <Fld label="Setores de Alta Transferência (além do principal)">
-          <div style={{fontSize:11,color:'var(--t3)',marginBottom:6}}>Selecione setores onde você já atuou ou tem alta transferibilidade</div>
-          <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
-            {['MedTech','HealthTech','SaaS Enterprise','CAPEX Industrial','LogTech','AgTech','FinTech','EdTech','FoodTech','RetailTech','PropTech'].map(setor=>{
-              const sel=(f.setoresTransfer||[]).includes(setor);
-              return(
-                <button key={setor} type="button"
-                  onClick={()=>{
-                    const curr=f.setoresTransfer||[];
-                    s('setoresTransfer',sel?curr.filter(x=>x!==setor):[...curr,setor]);
-                  }}
-                  style={{padding:'5px 12px',borderRadius:999,fontSize:11,fontWeight:700,cursor:'pointer',border:'1px solid',
-                    background:sel?'var(--gold)':'var(--s3)',color:sel?'#000':'var(--t3)',
-                    borderColor:sel?'var(--gold)':'var(--border)',transition:'all .15s'}}>
-                  {setor}
-                </button>
-              );
-            })}
-          </div>
-        </Fld>
-        <Fld label="Nível de Complexidade Técnica">
-          <select className="inp" value={f.complexidadePerfil||''} onChange={e=>s('complexidadePerfil',e.target.value)}>
-            <option value="">Selecione</option>
-            {['Baixa – produto simples','Média – consultivo','Alta – soluções complexas/enterprise'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-        <Fld label="Tamanho de Empresa Ideal (cliente)">
-          <select className="inp" value={f.tamClientePerfil||''} onChange={e=>s('tamClientePerfil',e.target.value)}>
-            <option value="">Selecione</option>
-            {['PME (até 200 func)','Mid-market (200–1000)','Enterprise (1000+)','Todos os tamanhos'].map(x=><option key={x}>{x}</option>)}
-          </select>
-        </Fld>
-      </Card>
-
       <Card sx={{padding:22,marginBottom:16}}>
         <div style={{fontSize:15,fontWeight:700,marginBottom:6}}>📄 Update CV</div>
         <div style={{fontSize:13,color:'var(--t2)',marginBottom:12}}>
@@ -3279,7 +2946,7 @@ CV:\n${txt.slice(0,3000)}`}],600);
         </div>}
       </Card>
 
-      {/* v15.15: API Key Multi-Provider */}
+      {/* v10.1: API Key Multi-Provider */}
       {(()=>{
         const [ak,setAk]=React.useState(()=>getApiKey());
         const [sv,setSv]=React.useState(false);
@@ -3338,9 +3005,8 @@ CV:\n${txt.slice(0,3000)}`}],600);
           const r=cMode==='login'?await _login(cEm.trim().toLowerCase(),cPw):await _signup(cEm.trim().toLowerCase(),cPw);
           setCBusy(false);
           if(!r.ok){setCErr(r.e);return;}
-          _setSess({uid:r.uid,em:r.em});
-          setCOk(cMode==='login'?'Conectado! Recarregando...':'Conta criada! Recarregando...');
-          setTimeout(()=>window.location.reload(),1200);
+          _setSess({bid:r.bid,em:r.em});
+          setCOk(cMode==='login'?'Conectado! Recarregue para sincronizar.':'Conta criada! Recarregue para ativar.');
         }
         return(
           <Card sx={{padding:20,marginBottom:14,border:'1px solid #0A84FF33',background:'rgba(10,132,255,.02)'}}>
@@ -3402,9 +3068,8 @@ function AuthScreen({onAuth}){
     const r=mode==='login'?await _login(em.trim().toLowerCase(),pw):await _signup(em.trim().toLowerCase(),pw);
     setBusy(false);
     if(!r.ok){setErr(r.e);return;}
-    /* Supabase SDK already persists session in localStorage */
-    /* onAuthStateChange will fire and update App state */
-    onAuth({uid:r.uid,em:r.em});
+    _setSess({bid:r.bid,em:r.em});
+    onAuth({bid:r.bid,em:r.em});
   }
 
   return(
@@ -3417,7 +3082,7 @@ function AuthScreen({onAuth}){
           <div style={{fontSize:48,fontWeight:900,color:'var(--gold)',letterSpacing:'-3px',
             fontFamily:'var(--mono)',lineHeight:1}}>CFI</div>
           <div style={{fontSize:9,color:'var(--t4)',fontWeight:700,letterSpacing:'.18em',
-            textTransform:'uppercase',marginTop:6}}>The Power of Decision · DSS v15.15</div>
+            textTransform:'uppercase',marginTop:6}}>The Power of Decision · DSS v10.1</div>
         </div>
 
         <Card sx={{padding:24}}>
@@ -3484,46 +3149,23 @@ function App(){
   const [showAdd,setShowAdd]=useState(false);
 
   useEffect(()=>{
-    /* Listen to Supabase auth state changes - reactive, works on all devices */
-    const subscription=_listenAuth(sess=>{
-      if(sess){
-        setJbs({uid:sess.uid,em:sess.em});
-        _setSess({uid:sess.uid,em:sess.em});
-        _cloudLoading.current=true;
-        _load(sess.uid).then(d=>{
-          if(d&&(d.profile||d.companies?.length))
-            setData({profile:d.profile||null,companies:d.companies||[]});
-          setTimeout(()=>{_cloudLoading.current=false;},800);
-        });
-      } else {
-        /* SIGNED_OUT event */
-        setJbs(null);
-      }
+    if(!jbs||!jbs.bid||jbs.offline)return;
+    _cloudLoading.current=true;
+    _load(jbs.bid).then(d=>{
+      if(d&&(d.profile||d.companies?.length))
+        setData({profile:d.profile||null,companies:d.companies||[]});
+      setTimeout(()=>{_cloudLoading.current=false;},500);
     });
-    /* Also check existing session on mount (for page refresh) */
-    _checkSession().then(sess=>{
-      if(sess){
-        setJbs({uid:sess.uid,em:sess.em});
-        _setSess({uid:sess.uid,em:sess.em});
-        _cloudLoading.current=true;
-        _load(sess.uid).then(d=>{
-          if(d&&(d.profile||d.companies?.length))
-            setData({profile:d.profile||null,companies:d.companies||[]});
-          setTimeout(()=>{_cloudLoading.current=false;},800);
-        });
-      }
-    });
-    return()=>subscription?.unsubscribe?.();
   },[]);
 
   useEffect(()=>{
     persist(data);
-    if(!jbs||!jbs.uid||jbs.offline)return;
+    if(!jbs||!jbs.bid||jbs.offline)return;
     if(_cloudLoading.current)return;
     if(_st.current)clearTimeout(_st.current);
     _st.current=setTimeout(async()=>{
       setSyncing(true);
-      const ok=await _save(jbs.uid,data);
+      const ok=await _save(jbs.bid,data,jbs);
       setSyncing(false);
       if(!ok)console.warn('CFI: dados nao salvos na nuvem');
     },2500);
@@ -3562,7 +3204,7 @@ function App(){
         <AuthScreen onAuth={s=>{
           _cloudLoading.current=true;
           setJbs(s);
-          _load(s.uid).then(d=>{
+          _load(s.bid).then(d=>{
             if(d&&(d.profile||d.companies?.length)){
               setData({profile:d.profile||null,companies:d.companies||[]});
             }
@@ -3593,12 +3235,12 @@ function App(){
           <div style={{fontSize:32,fontWeight:900,color:'var(--gold)',letterSpacing:'-2px',
             fontFamily:'var(--mono)',lineHeight:1}}>CFI</div>
           <div style={{fontSize:9,color:'var(--t4)',fontWeight:700,letterSpacing:'.18em',
-            textTransform:'uppercase',marginTop:3}}>The Power of Decision · DSS v15.15</div>
+            textTransform:'uppercase',marginTop:3}}>The Power of Decision · DSS v10.1</div>
         </div>
         <div style={{padding:'12px 18px',borderBottom:'1px solid var(--border)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <div style={{fontSize:14,fontWeight:700}}>{profile.name}</div>
-            {jbs&&<button onClick={()=>{_clrSess();setJbs(null);persist({profile:null,companies:[]});setData({profile:null,companies:[]});setView('dash');setSelId(null);setShowAdd(false);}}
+            {jbs&&<button onClick={()=>{_clrSess();setJbs(null);setView('dash');setSelId(null);setShowAdd(false);}}
               style={{background:'none',border:'1px solid var(--border)',cursor:'pointer',
                 color:'var(--t3)',fontSize:10,padding:'2px 8px',borderRadius:'var(--r)',fontWeight:600}}>
               Sair
@@ -3606,7 +3248,7 @@ function App(){
           </div>
           <div style={{fontSize:12,color:'var(--t2)',marginTop:1}}>{profile.role||profile.area}</div>
           <div style={{fontSize:9,color:syncing?'#FFB800':jbs?'var(--green)':'var(--t4)',fontFamily:'var(--mono)',marginTop:3}}>
-            {syncing?'salvando...':jbs&&jbs.uid&&!jbs.offline?'☁ nuvem ativa':'◉ local'}
+            {syncing?'salvando...':jbs&&jbs.bid&&!jbs.offline?'nuvem ativa':jbs&&jbs.offline?'modo offline':'local only'}
           </div>
           {profile.discSeq?.length>0&&(
             <div style={{display:'flex',gap:4,marginTop:6,flexWrap:'wrap'}}>
@@ -3663,38 +3305,14 @@ function App(){
                     overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{co.role}</div>
                 </div>
                 <div style={{flexShrink:0}}>
-                  {(()=>{
-                  const qs2=calcQualScore(co);
-                  const pm2=calcProfileMatch(co,profile);
-                  const comb=Math.round(fs*0.65+qs2*0.20+pm2*0.15);
-                  const fl2=calcFitLabel(comb,qs2);
-                  return fl||fs>0
-                    ?<span style={{fontFamily:'var(--mono)',fontSize:11,color:fl2.c,fontWeight:700}}>{fl2.icon}{comb}%</span>
-                    :a>0?<span style={{fontFamily:'var(--mono)',fontSize:11,color:'#FFB800',fontWeight:700}}>{a}%</span>
-                    :null;
-                })()}
+                  {fl?<span style={{fontFamily:'var(--mono)',fontSize:11,color:fl.c,fontWeight:700}}>⚡{fs}%</span>
+                  :a>0?<span style={{fontFamily:'var(--mono)',fontSize:11,color:'#FFB800',fontWeight:700}}>{a}%</span>
+                  :null}
                 </div>
               </button>);})}
         </div>
-        <div style={{padding:'10px 18px',borderTop:'1px solid var(--border)'}}>
-          {jbs&&jbs.uid&&!jbs.offline&&(
-            <button onClick={async()=>{
-              setSyncing(true);
-              const ok=await _save(jbs.uid,data);
-              setSyncing(false);
-              if(ok){alert('✓ Dados salvos na nuvem com sucesso!\nAbra em outro dispositivo e faça login para confirmar.');}
-              else{alert('Erro ao salvar.\nVerifique:\n1. Supabase: Authentication > Settings > desative Email Confirmation\n2. SQL foi executado corretamente\n3. Conexão com internet');}
-            }}
-            style={{width:'100%',padding:'8px',background:'var(--s3)',
-              border:'1px solid var(--border)',borderRadius:'var(--r)',
-              cursor:'pointer',color:'var(--gold)',fontSize:12,fontWeight:700,
-              marginBottom:6,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
-              {syncing?'Salvando...':'☁ Salvar na Nuvem'}
-            </button>
-          )}
-          <div style={{fontSize:11,color:'var(--t4)',textAlign:'center'}}>
-            {companies.length} vagas · v15.15
-          </div>
+        <div style={{padding:'10px 18px',borderTop:'1px solid var(--border)',fontSize:11,color:'var(--t4)'}}>
+          {companies.length} vagas · v10.1 · CFI
         </div>
       </aside>
 
